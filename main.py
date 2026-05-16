@@ -129,30 +129,38 @@ def get_article():
         article_title = h1.get_text(strip=True) if h1 else title
 
         # Build structured sections
-        sections = []
-        current = {"heading": "Overview", "text": ""}
+        sections_list = []
+        full_text = ""
+        current_h = "Overview"
+        current_t = []
 
-        for el in list(content_div.children):
-            tag_name = getattr(el, 'name', None)
-            if not tag_name:
-                continue
-            if tag_name in ('h2', 'h3'):
+        found_elements = content_div.find_all(
+            ['h2', 'h3', 'p', 'ul', 'ol', 'dl', 'blockquote'], recursive=True
+        )
+
+        for el in found_elements:
+            if el.name in ('h2', 'h3'):
                 heading_text = el.get_text(strip=True)
                 if any(skip in heading_text for skip in ("Sources", "See also", "Development History", "Trivia")):
                     break
-                if current["text"].strip():
-                    sections.append(current)
-                current = {"heading": heading_text, "text": ""}
-            elif tag_name in ('p', 'ul', 'ol', 'dl', 'blockquote'):
-                current["text"] += el.get_text(separator=" ", strip=True) + "\n"
+                if current_t:
+                    full_text += f"\n## {current_h}\n" + "\n".join(current_t) + "\n"
+                    sections_list.append(current_h)
+                current_h = heading_text
+                current_t = []
+            else:
+                text = el.get_text(separator=" ", strip=True)
+                if text:
+                    current_t.append(text)
 
-        if current["text"].strip():
-            sections.append(current)
+        if current_t:
+            full_text += f"\n## {current_h}\n" + "\n".join(current_t) + "\n"
+            sections_list.append(current_h)
 
-        full_text = ""
-        for s in sections:
-            if s["text"].strip():
-                full_text += f"\n## {s['heading']}\n{s['text']}"
+        # Fallback: if still empty, grab all text directly
+        if not full_text.strip():
+            full_text = content_div.get_text(separator="\n", strip=True)
+            sections_list = ["Overview"]
 
         full_text = clean_text(full_text)
 
@@ -165,7 +173,7 @@ def get_article():
         return jsonify({
             "title": article_title,
             "url": response.url,
-            "sections": [s["heading"] for s in sections if s["text"].strip()],
+            "sections": sections_list,
             "content": full_text,
             "truncated": truncated,
             "source": "wh40k.lexicanum.com"
