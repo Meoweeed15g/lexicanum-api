@@ -180,6 +180,43 @@ def get_article():
         }), 500
 
 
+@app.route("/debug")
+def debug():
+    title = request.args.get("title", "Horus_Heresy")
+    url = f"{BASE_URL}/wiki/{title}"
+    response = fetch_page(url)
+    if not response:
+        return jsonify({"error": "Could not fetch page"}), 503
+
+    soup = BeautifulSoup(response.content, "html.parser")
+    content_div = soup.select_one(".mw-parser-output")
+    fallback = False
+    if not content_div:
+        content_div = soup.select_one("#mw-content-text")
+        fallback = True
+
+    if not content_div:
+        return jsonify({"error": "No content div found"})
+
+    children = []
+    for el in list(content_div.children)[:20]:
+        tag = getattr(el, 'name', None)
+        if tag:
+            children.append({
+                "tag": tag,
+                "class": el.get("class", []),
+                "text_len": len(el.get_text(strip=True)),
+                "text_snippet": el.get_text(strip=True)[:100]
+            })
+
+    return jsonify({
+        "used_fallback": fallback,
+        "total_children": sum(1 for el in content_div.children if getattr(el, 'name', None)),
+        "first_20_tags": children,
+        "h1": soup.select_one("h1#firstHeading, h1.firstHeading").get_text(strip=True) if soup.select_one("h1#firstHeading, h1.firstHeading") else None
+    })
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
